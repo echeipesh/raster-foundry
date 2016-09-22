@@ -8,7 +8,7 @@ import com.azavea.rf.utils.PaginatedResponse
   */
 package object footprint extends RfJsonProtocols {
   implicit val footprintWithGeojsonFormat = jsonFormat5(FootprintWithGeojson.apply)
-  implicit val footprintWithGeojsonCreateFormat = jsonFormat4(FootprintWithGeojsonCreate)
+  implicit val footprintWithGeojsonCreateFormat = jsonFormat2(FootprintWithGeojsonCreate)
 
   implicit val paginatedFootprintWithGeojsonFormat = jsonFormat6(PaginatedResponse[FootprintWithGeojson])
 }

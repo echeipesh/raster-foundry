@@ -17,7 +17,7 @@ object BucketFilters {
 
     def filterByOrganization(orgParams: OrgQueryParameters): BucketsQuery = {
       buckets.filter{
-        bucket => orgParams.organization.map(bucket.organizationId === _)
+        bucket => orgParams.organizations.map(bucket.organizationId === _)
           .reduceLeftOption(_ || _).getOrElse(true: Rep[Boolean])
       }
     }
