@@ -18,13 +18,15 @@ import com.azavea.rf.utils.UserErrorException
 
 
 case class FootprintWithGeojsonCreate(
-  organizationId: UUID, createdAt: Timestamp, modifiedAt: Timestamp, multipolygon: JsValue
+  organizationId: UUID, createdAt: Timestamp, modifiedAt: Timestamp, multipolygon: JsValue,
+  scene: UUID
 ) {
   def toFootprintsRow(): Try[FootprintsRow] = {
     Try(
       FootprintsRow(
         UUID.randomUUID(), organizationId, createdAt,
-        modifiedAt, Projected(multipolygon.convertTo[Geometry], 3857)
+        modifiedAt, Projected(multipolygon.convertTo[Geometry], 3857),
+        scene
       )
     )
   }
@@ -32,18 +34,21 @@ case class FootprintWithGeojsonCreate(
 
 
 case class FootprintWithGeojson(
-  id: UUID, organizationId: UUID, createdAt: Timestamp, modifiedAt: Timestamp, multipolygon: JsValue
+  id: UUID, organizationId: UUID, createdAt: Timestamp, modifiedAt: Timestamp, multipolygon: JsValue,
+  scene: UUID
 ) {
 
   def this(footprint: FootprintsRow) = this(
     footprint.id, footprint.organizationId, footprint.createdAt,
-    footprint.modifiedAt, footprint.multipolygon.geom.toGeoJson.toJson
+    footprint.modifiedAt, footprint.multipolygon.geom.toGeoJson.toJson,
+    footprint.scene
   )
 
   def toFootprintsRow(): FootprintsRow = {
     FootprintsRow(
       id, organizationId, createdAt,
-      modifiedAt, Projected(multipolygon.convertTo[Geometry], 3857)
+      modifiedAt, Projected(multipolygon.convertTo[Geometry], 3857),
+      scene
     )
   }
 }
@@ -92,7 +97,7 @@ object FootprintService extends AkkaSystem.LoggerExecutor {
             )
           )
         }
-        case _ => 
+        case _ =>
           Future(
             Failure(
               new UserErrorException(
