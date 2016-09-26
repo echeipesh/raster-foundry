@@ -71,6 +71,7 @@ services:
       - ./app-tasks/dags/:/opt/raster-foundry/app-tasks/dags/
       - ./app-tasks/rf/:/opt/raster-foundry/app-tasks/rf/
       - ./app-tasks/rf/src/rf/:/usr/local/bin/rf/
+      - $HOME/.aws:/root/.aws:ro
     build:
       context: ./app-tasks
       dockerfile: Dockerfile
@@ -136,6 +137,7 @@ services:
     links:
       - postgres:database.raster-foundry.internal
       - redis:redis.raster-foundry.internal
+      - app-server:rasterfoundry.com
     env_file: .env
     environment:
       - AIRFLOW_HOME=/usr/local/airflow
