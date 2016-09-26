@@ -7,6 +7,9 @@ import akka.http.scaladsl.model.{HttpEntity, ContentTypes}
 import akka.actor.ActorSystem
 import concurrent.duration._
 import spray.json._
+import java.util.UUID
+import java.sql.Timestamp
+import java.time.Instant
 
 import geotrellis.vector.io._
 import geotrellis.vector.{MultiPolygon, Polygon, Point, Geometry}
@@ -15,8 +18,10 @@ import geotrellis.slick.Projected
 import com.azavea.rf.utils.Config
 import com.azavea.rf.{DBSpec, Router}
 import com.azavea.rf.datamodel.latest.schema.tables._
+import com.azavea.rf.datamodel.enums._
 import com.azavea.rf.utils.PaginatedResponse
 import com.azavea.rf.AuthUtils
+import com.azavea.rf.scene._
 
 class FootprintSpec extends WordSpec
     with Matchers
@@ -30,6 +35,8 @@ class FootprintSpec extends WordSpec
 
   val anonAuthorization = AuthUtils.generateAuthHeader("Default")
   val authorization = AuthUtils.generateAuthHeader("User")
+  val baseScene = "/api/scenes/"
+  val publicOrgId = UUID.fromString("dfac6307-b5ef-43f7-beda-b9f208bb7726")
 
   "/api/footprints" should {
     "return a paginated list of footprints" in {
@@ -37,86 +44,89 @@ class FootprintSpec extends WordSpec
         responseAs[PaginatedResponse[FootprintWithGeojson]]
       }
     }
-    "allow the creation of new footprints" in {
-      val poly = Projected(
-        MultiPolygon(Polygon(Seq(Point(100,100), Point(110,100), Point(110,110), Point(100,110), Point(100,100)))),
-        3857
-      )
-      val newFootprint = FootprintWithGeojsonCreate(
-        java.util.UUID.fromString("dfac6307-b5ef-43f7-beda-b9f208bb7726"),
-        poly.geom.toGeoJson.parseJson.asJsObject
-      )
-      val request = Post("/api/footprints").withHeadersAndEntity(
-        List(authorization),
-        HttpEntity(
-          ContentTypes.`application/json`,
-          newFootprint.toJson(footprintWithGeojsonCreateFormat).toString()
-        )
-      )
-      // request.toString() shouldEqual "something"
-      request ~> footprintRoutes ~> check {
-        responseAs[FootprintWithGeojson]
+    "require authentication to create new footprints" in {
+      Post("/api/footprints")
+        .withEntity(
+        HttpEntity(ContentTypes.`application/json`, "")
+      ) ~> footprintRoutes ~> check {
+        rejections.length shouldEqual 2
       }
     }
-    "filter footprints by point" in {
-      val poly = Projected(
-        MultiPolygon(Polygon(Seq(Point(100,100), Point(110,100), Point(110,110), Point(100,110), Point(100,100)))),
-        3857
+    "allow the creation of new footprints" in {
+      val newSceneDatasource = CreateScene(
+        publicOrgId, 0, PUBLIC, 20.2f, List("Test", "Public", "Low Resolution"), "TEST_ORG",
+        Map("instrument type" -> "satellite", "splines reticulated" -> 0):Map[String, Any], None,
+        Some(Timestamp.from(Instant.parse("2016-09-19T14:41:58.408544Z"))),
+        PROCESSING, PROCESSING, PROCESSING, None, None, "test scene datasource"
       )
-      val newFootprint = FootprintWithGeojsonCreate(
-        java.util.UUID.fromString("dfac6307-b5ef-43f7-beda-b9f208bb7726"),
-        poly.geom.toGeoJson.parseJson.asJsObject
-      )
-      Post("/api/footprints").withHeadersAndEntity(
+      Post("/api/scenes/").withHeadersAndEntity(
         List(authorization),
         HttpEntity(
           ContentTypes.`application/json`,
-          newFootprint.toJson(footprintWithGeojsonCreateFormat).toString()
+          newSceneDatasource.toJson(createSceneFormat).toString()
         )
-      ) ~> footprintRoutes
+      ) ~> sceneRoutes ~> check {
+        val scene = responseAs[ScenesRow]
+        val poly = Projected(
+          MultiPolygon(Polygon(Seq(Point(100,100), Point(110,100), Point(110,110),
+                                   Point(100,110), Point(100,100)))),
+          3857
+        )
+        val newFootprint = FootprintWithGeojsonCreate(
+          publicOrgId,
+          poly.geom.toGeoJson.parseJson.asJsObject,
+          scene.id
+          )
+        Post("/api/footprints").withHeadersAndEntity(
+          List(authorization),
+          HttpEntity(
+            ContentTypes.`application/json`,
+            newFootprint.toJson(footprintWithGeojsonCreateFormat).toString()
+          )
+        ) ~> footprintRoutes ~> check {
+          responseAs[FootprintWithGeojson]
+        }
+      }
+    }
+    "allow updating a footprint" ignore {
+      // Add change to footprint here
+    }
+    "allow deleting a footprint" ignore {
+      // Add deletion of footprint here
+    }
+    "filter footprints by point" in {
       Get("/api/footprints/?x=101&y=101") ~> footprintRoutes ~> check {
         val res = responseAs[PaginatedResponse[FootprintWithGeojson]]
-        res.count === 1
+        res.count shouldEqual 1
+      }
+      Get("/api/footprints/?x=1&y=1") ~> footprintRoutes ~> check {
+        val res = responseAs[PaginatedResponse[FootprintWithGeojson]]
+        res.count shouldEqual 0
       }
     }
     "filter footprints by bounding box" in {
-      val poly1 = Projected(
-        MultiPolygon(Polygon(Seq(Point(0,0), Point(1,0), Point(1,1), Point(0,1), Point(0,0)))),
-        3857
-      )
-      val newFootprint1 = FootprintWithGeojsonCreate(
-        java.util.UUID.fromString("dfac6307-b5ef-43f7-beda-b9f208bb7726"),
-        poly1.geom.toGeoJson.parseJson.asJsObject
-      )
-      Post("/api/footprints").withHeadersAndEntity(
-        List(authorization),
-        HttpEntity(
-          ContentTypes.`application/json`,
-          newFootprint1.toJson(footprintWithGeojsonCreateFormat).toString()
-        )
-      ) ~> footprintRoutes
-      val poly2 = Projected(
-        MultiPolygon(
-          Polygon(Seq(Point(10,10), Point(20,10), Point(20,20), Point(10,20), Point(10,10)))
-        ),
-        3857
-      )
-      val newFootprint2 = FootprintWithGeojsonCreate(
-        java.util.UUID.fromString("dfac6307-b5ef-43f7-beda-b9f208bb7726"),
-        poly2.geom.toGeoJson.parseJson.asJsObject
-      )
-      Post("/api/footprints").withHeadersAndEntity(
-        List(authorization),
-        HttpEntity(
-          ContentTypes.`application/json`,
-          newFootprint2.toJson(footprintWithGeojsonCreateFormat).toString()
-        )
-      ) ~> footprintRoutes
-
-
-      Get("/api/footprints/?bbox=5,5,30,30") ~> footprintRoutes ~> check {
-        val res = responseAs[PaginatedResponse[FootprintWithGeojson]] 
-        res.count === 1
+      Get("/api/footprints/?bbox=0,0,1,1") ~> footprintRoutes ~> check {
+        val res = responseAs[PaginatedResponse[FootprintWithGeojson]]
+        res.count shouldEqual 0
+      }
+      Get("/api/footprints/?bbox=0,0,1000,1000") ~> footprintRoutes ~> check {
+        val res = responseAs[PaginatedResponse[FootprintWithGeojson]]
+        res.count shouldEqual 1
+      }
+    }
+    "filter footprints by scene" in {
+      Get(s"/api/scenes/?organization=$publicOrgId") ~> sceneRoutes ~> check {
+        val res = responseAs[PaginatedResponse[ScenesRow]]
+        Get(s"/api/footprints/?scene=${res.results(0).id}") ~> footprintRoutes ~> check {
+          val res = responseAs[PaginatedResponse[FootprintWithGeojson]]
+          res.count === 1
+        }
+        // check for non-existent uuid
+        Get(s"/api/footprints/?scene=0905f06b-ff80-45cf-b655-3fb95c7eb7af") ~>
+          footprintRoutes ~> check {
+          val res = responseAs[PaginatedResponse[FootprintWithGeojson]]
+          res.count === 0
+        }
       }
     }
   }

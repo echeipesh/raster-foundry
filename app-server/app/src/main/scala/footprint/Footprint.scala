@@ -20,14 +20,15 @@ import com.azavea.rf.utils.UserErrorException
 
 
 case class FootprintWithGeojsonCreate(
-  organizationId: UUID, multipolygon: JsObject
+  organizationId: UUID, multipolygon: JsObject, sceneId: UUID
 ) {
   def toFootprintsRow(): Try[FootprintsRow] = {
     val now = new Timestamp((new java.util.Date()).getTime())
     Try(
       FootprintsRow(
         UUID.randomUUID(), organizationId, now,
-        now, Projected(multipolygon.convertTo[Geometry], 3857)
+        now, Projected(multipolygon.convertTo[Geometry], 3857),
+        sceneId
       )
     )
   }
@@ -35,18 +36,20 @@ case class FootprintWithGeojsonCreate(
 
 
 case class FootprintWithGeojson(
-  id: UUID, organizationId: UUID, createdAt: Timestamp, modifiedAt: Timestamp, multipolygon: JsObject
+  id: UUID, organizationId: UUID, createdAt: Timestamp, modifiedAt: Timestamp, multipolygon: JsObject, sceneId: UUID
 ) {
 
   def this(footprint: FootprintsRow) = this(
     footprint.id, footprint.organizationId, footprint.createdAt,
-    footprint.modifiedAt, footprint.multipolygon.geom.toGeoJson.parseJson.asJsObject
+    footprint.modifiedAt, footprint.multipolygon.geom.toGeoJson.parseJson.asJsObject,
+    footprint.sceneId
   )
 
   def toFootprintsRow(): FootprintsRow = {
     FootprintsRow(
       id, organizationId, createdAt,
-      modifiedAt, Projected(multipolygon.convertTo[Geometry], 3857)
+      modifiedAt, Projected(multipolygon.convertTo[Geometry], 3857),
+      sceneId
     )
   }
 }

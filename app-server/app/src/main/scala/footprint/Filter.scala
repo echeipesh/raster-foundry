@@ -27,7 +27,6 @@ object FootprintFilters {
       } else {
         footprints
       }
-
     }
 
     def filterByTimestamp(timeParams: TimestampQueryParameters): FootprintsQuery = {
