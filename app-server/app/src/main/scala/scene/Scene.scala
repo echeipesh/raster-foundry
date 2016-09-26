@@ -31,7 +31,10 @@ case class CreateScene(
   status: JobStatus,
   sunAzimuth: Option[Float],
   sunElevation: Option[Float],
-  name: String
+  name: String,
+  images: Option[List[ImagesRow]],
+  footprint: Option[FootprintsRow],
+  thumbnails: Option[List[ThumbnailsRow]]
 ) {
   def toScene(userId: String): ScenesRow = {
     val now = new Timestamp((new java.util.Date()).getTime())
