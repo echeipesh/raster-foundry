@@ -143,5 +143,18 @@ class ThumbnailSpec extends WordSpec
         responseAs[PaginatedResponse[ThumbnailsRow]]
       }
     }
+
+    "reject all non-get requests" in {
+      val url = s"/api/buckets/"
+      Put(url) ~> thumbnailRoutes ~> check {
+        reject
+      }
+      Post(url) ~> thumbnailRoutes ~> check {
+        reject
+      }
+      Head(url) ~> thumbnailRoutes ~> check {
+        reject
+      }
+    }
   }
 }
