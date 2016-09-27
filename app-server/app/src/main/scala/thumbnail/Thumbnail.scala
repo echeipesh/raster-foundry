@@ -1,26 +1,59 @@
 package com.azavea.rf.thumbnail
 
 import java.sql.Timestamp
+import java.util.UUID
 
 import scala.concurrent.{Future, ExecutionContext}
 import scala.util.{Success, Failure, Try}
 
+import slick.lifted._
+import com.lonelyplanet.akka.http.extensions.PageRequest
+
 import com.azavea.rf.AkkaSystem
+import com.azavea.rf.datamodel.driver.ExtendedPostgresDriver
 import com.azavea.rf.datamodel.latest.schema.tables._
-import com.azavea.rf.utils.Database
+import com.azavea.rf.utils.{Database => DB, PaginatedResponse}
 
-trait Thumbnail extends AkkaSystem.LoggerExecutor {
+case class CreateThumbnail(
+  organizationId: UUID,
+  widthPx: Int,
+  heightPx: Int,
+  size: String,
+  sceneId: UUID,
+  url: String
+) {
+  def toThumbnail: ThumbnailsRow = {
+    val now = new Timestamp((new java.util.Date()).getTime())
+    ThumbnailsRow(
+      UUID.randomUUID, // primary key
+      now, // created at,
+      now, // modified at,
+      organizationId,
+      widthPx, // width in pixels
+      heightPx, // height in pixels
+      size, // size as a member of {"small", "large", "square"}
+      sceneId,
+      url
+    )
+  }
+}
 
-  implicit val ec:ExecutionContext
-  implicit val database:Database
 
-  import database.driver.api._
+object ThumbnailService extends AkkaSystem.LoggerExecutor {
+
+  import ThumbnailFilters._
+
+  type ThumbnailQuery = Query[Thumbnails, Thumbnails#TableElementType, Seq]
+
+  import ExtendedPostgresDriver.api._
 
   /** Insert a thumbnail into the database
     *
     * @param thumbnail ThumbnailsRow
     */
-  def insertThumbnail(thumbnail: ThumbnailsRow): Future[Try[ThumbnailsRow]] = {
+  def insertThumbnail(thumbnail: ThumbnailsRow)
+    (implicit database: DB, ec: ExecutionContext): Future[Try[ThumbnailsRow]] = {
+
     lazy val action = Thumbnails.forceInsert(thumbnail)
     log.debug(s"Inserting thumbnail with: ${action.statements.headOption}")
     database.db.run {
@@ -33,9 +66,11 @@ trait Thumbnail extends AkkaSystem.LoggerExecutor {
 
   /** Retrieve a single thumbnail from the database
     *
-    * @param thumbnailId java.util.UUID ID Of thumbnail to query with
+    * @param thumbnailId UUID ID Of thumbnail to query with
     */
-  def getThumbnail(thumbnailId: java.util.UUID): Future[Option[ThumbnailsRow]] = {
+  def getThumbnail(thumbnailId: UUID)
+    (implicit database: DB, ec: ExecutionContext): Future[Option[ThumbnailsRow]] = {
+
     val action = Thumbnails.filter(_.id === thumbnailId).result
     log.debug(s"Retrieving thumbnail with: ${action.statements.headOption}")
     database.db.run {
@@ -43,11 +78,49 @@ trait Thumbnail extends AkkaSystem.LoggerExecutor {
     }
   }
 
+  def getThumbnails(pageRequest: PageRequest, queryParams: ThumbnailQueryParameters)
+    (implicit database: DB, ec: ExecutionContext): Future[PaginatedResponse[ThumbnailsRow]] = {
+
+    val thumbnails = Thumbnails.filterBySceneParams(queryParams)
+
+    val paginatedThumbnails = database.db.run {
+      val action = thumbnails.page(pageRequest).result
+      log.debug(s"Query for thumbnails -- SQL ${action.statements.headOption}")
+      action
+    }
+
+    val totalThumbnailsQuery = database.db.run { thumbnails.length.result }
+
+    for {
+      totalThumbnails <- totalThumbnailsQuery
+      thumbnails <- paginatedThumbnails
+    } yield {
+      val hasNext = (pageRequest.offset + 1) * pageRequest.limit < totalThumbnails
+      val hasPrevious = pageRequest.offset > 0
+      PaginatedResponse[ThumbnailsRow](totalThumbnails, hasPrevious, hasNext,
+        pageRequest.offset, pageRequest.limit, thumbnails)
+    }
+  }
+  /** List buckets after applying filters and sorting
+    *
+    * @param pageRequest PageRequest pagination parameters
+    * @param queryParams ThumbnailQueryParams query paremeters for relevant thumbnails
+    */
+   /*
+  def getThumbnails(pageRequest: PageRequest, queryParams: ThumbnailQueryParams)
+    (implicit database: DB, ec: ExecutionContext): Future[PaginatedResponse[ThumbnailsRow]] = {
+
+
+
+  }*/
+
   /** Delete a scene from the database
     *
-    * @param thumbnailId java.util.UUID ID of scene to delete
+    * @param thumbnailId UUID ID of scene to delete
     */
-  def deleteThumbnail(thumbnailId: java.util.UUID): Future[Try[Int]] = {
+  def deleteThumbnail(thumbnailId: UUID)
+    (implicit database: DB, ec: ExecutionContext): Future[Try[Int]] = {
+
     val action = Thumbnails.filter(_.id === thumbnailId).delete
     log.debug(s"Deleting thumbnail with: ${action.statements.headOption}")
     database.db.run {
@@ -69,10 +142,12 @@ trait Thumbnail extends AkkaSystem.LoggerExecutor {
     * createdBy or createdAt fields
     *
     * @param thumbnail ThumbnailsRow scene to use to update the database
-    * @param thumbnailId java.util.UUID ID of scene to update
+    * @param thumbnailId UUID ID of scene to update
     * @param user UsersRow user performing the update
     */
-  def updateThumbnail(thumbnail: ThumbnailsRow, thumbnailId: java.util.UUID): Future[Try[Int]] = {
+  def updateThumbnail(thumbnail: ThumbnailsRow, thumbnailId: UUID)
+    (implicit database: DB, ec: ExecutionContext): Future[Try[Int]] = {
+
     val updateTime = new Timestamp((new java.util.Date()).getTime())
 
     val updateThumbnailQuery = for {
