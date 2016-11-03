@@ -1,36 +1,54 @@
 package com.azavea.rf.ingest
 
-import org.apache.spark.rdd._
-import org.apache.spark._
-import spray.json._
-import geotrellis.proj4._
-import geotrellis.vector.ProjectedExtent
-import geotrellis.raster.io.geotiff.MultibandGeoTiff
-import geotrellis.raster._
+import com.azavea.rf.ingest.s3._
+import com.azavea.rf.ingest.util._
+import com.azavea.rf.ingest.model._
+
+import geotrellis.raster.histogram.Histogram
+import geotrellis.raster.io._
+import geotrellis.raster.resample.NearestNeighbor
 import geotrellis.spark._
+import geotrellis.spark.io._
+import geotrellis.spark.io.index.ZCurveKeyIndexMethod
+import geotrellis.spark.io.s3._
+import geotrellis.spark.pyramid.Pyramid
+import geotrellis.vector.ProjectedExtent
+import geotrellis.raster._
+import geotrellis.raster.io.geotiff.MultibandGeoTiff
 import geotrellis.spark.tiling._
 import geotrellis.proj4.LatLng
 
+import org.apache.spark.rdd._
+import org.apache.spark._
+import spray.json._
 import java.net.URI
 
-import com.azavea.rf.ingest.util._
-import com.azavea.rf.ingest.model._
+case class BandTile(band: Int, tile: Tile)
 
 object Ingest extends SparkJob {
 
   case class Params(jobDefinition: URI = new URI(""))
+  type RfLayerWriter = Writer[LayerId, RDD[(SpatialKey, MultibandTile)] with Metadata[TileLayerMetadata[SpatialKey]]]
 
-  def calculateTileLayerMetadata(layer: IngestLayer): TileLayerMetadata[SpatialKey] = {
+  def getRfLayerWriter(base: URI): (RfLayerWriter, AttributeStore) = {
+    val (bucket, prefix) = S3.parse(base)
+    val s3writer = S3LayerWriter(bucket, prefix)
+    val writer = s3writer.writer[SpatialKey, MultibandTile, TileLayerMetadata[SpatialKey]](ZCurveKeyIndexMethod)
+    (writer, s3writer.attributeStore)
+  }
+
+  def calculateTileLayerMetadata(layer: IngestLayer, scheme: LayoutScheme): (Int, TileLayerMetadata[SpatialKey]) = {
     // We need to build TileLayerMetadata that we expect to start pyramid from
     val overallExtent = layer.sources
-      .map(src => src.extent.reproject(src.crs, layer.output.crs))
+      .map(src => src.extent)
       .reduce(_ combine _)
+      .reproject(LatLng, layer.output.crs)
 
     // Infer the base level of the TMS pyramid based on overall extent and cellSize
     val LayoutLevel(maxZoom, baseLayoutDefinition) =
-      ZoomedLayoutScheme(layer.output.crs, 256).levelFor(overallExtent, layer.output.cellSize)
+      scheme.levelFor(overallExtent, layer.output.cellSize)
 
-    TileLayerMetadata(
+    maxZoom -> TileLayerMetadata(
       cellType = layer.output.cellType,
       layout = baseLayoutDefinition,
       extent = overallExtent,
@@ -46,45 +64,95 @@ object Ingest extends SparkJob {
     )
   }
 
-  def main(args: Array[String]): Unit = {
-    val params = CommandLine.parser.parse(args, Ingest.Params()) match {
-      case Some(params) => params
-      case None => throw new Exception("Unable to parse command line arguments")
+  def multibandHistogram(rdd: RDD[(SpatialKey, MultibandTile)], numBuckets: Int): Vector[Histogram[Double]] = {
+    rdd.map { case (key, mbt) =>
+      mbt.bands.map { tile =>
+        tile.histogramDouble(numBuckets)
+      }
     }
+    .reduce { (hs1, hs2) =>
+      hs1.zip(hs2).map { case (a, b) => a merge b }
+    }
+  }
 
-    val ingestDefinition = readString(params.jobDefinition).parseJson.convertTo[IngestDefinition]
+  /**
+    * This can be tested from sbt console with:
+    * test:runMain com.azavea.rf.ingest.Ingest -j file:/Users/eugene/proj/raster-foundry/app-backend/ingest/sampleJob.json
+    */
+  def main(args: Array[String]): Unit = {
+    val ingestDefinition = CommandLine.parser.parse(args, Ingest.Params()) match {
+      case Some(params) =>
+        readString(params.jobDefinition).parseJson.convertTo[IngestDefinition]
+      case None =>
+        throw new Exception("Unable to parse command line arguments")
+    }
 
     implicit val sc = new SparkContext(conf)
 
     // Loop over the different Layers to construct RDDs from their input sources
     ingestDefinition.layers.foreach { layer =>
+
+      val tileSize = 256
       val destCRS = layer.output.crs
+      val bandCount: Int = layer.sources.map(_.bandMaps.map(_.target).max).max
+      val layoutScheme = ZoomedLayoutScheme(layer.output.crs, tileSize)
+      val resampleMethod = NearestNeighbor
 
       // Read source tiles and reproject them to desired CRS
       val sourceTiles: RDD[((ProjectedExtent, Int), Tile)] =
         sc.parallelize(layer.sources, layer.sources.length).flatMap { source =>
-          val srcCrs = source.crs
           val tiffBytes = readBytes(source.uri)
-          val MultibandGeoTiff(mbTile, srcExtent, _, tags, options) = MultibandGeoTiff(tiffBytes)
+          val MultibandGeoTiff(mbTile, srcExtent, srcCRS, _, _) = MultibandGeoTiff(tiffBytes)
 
           source.bandMaps.map { bm: BandMapping =>
             // GeoTrellis multi-band tiles are 0 indexed
-            val band = mbTile.band(bm.source - 1).reproject(srcExtent, srcCrs, destCRS)
+            val band = mbTile.band(bm.source - 1).reproject(srcExtent, srcCRS, destCRS)
             (ProjectedExtent(band.extent, destCRS), bm.target - 1) -> band.tile
           }
         }
 
-      val tileLayerMetadata = Ingest.calculateTileLayerMetadata(layer)
-
-      // TODO: Add resample options to use Bilinear/NN (needs to be job layer.output)
+      val (maxZoom, tileLayerMetadata) = Ingest.calculateTileLayerMetadata(layer, layoutScheme)
 
       val tiledRdd = sourceTiles.tileToLayout[(SpatialKey, Int)](
         tileLayerMetadata.cellType,
-        tileLayerMetadata.layout
-      )
-      tiledRdd.keys.collect.foreach(println)
+        tileLayerMetadata.layout,
+        resampleMethod)
+
+      // Merge Tiles into MultibandTile and fill in bands that aren't listed
+      val multibandTiledRdd: RDD[(SpatialKey, MultibandTile)] = tiledRdd
+        .map { case ((key, band), tile) => key -> (tile, band) }
+        .groupByKey
+        .map { case (key, tiles) =>
+          val prototype: Tile = tiles.head._1
+          val emptyTile: Tile = ArrayTile.empty(prototype.cellType, prototype.cols, prototype.rows)
+          val arr = tiles.toArray
+          val bands: Seq[Tile] =
+            for ( band <- 0 until bandCount ) yield
+              arr.find(_._2 == band).map(_._1).getOrElse(emptyTile)
+          key -> MultibandTile(bands)
+        }
+
+      val layerRdd = ContextRDD(multibandTiledRdd, tileLayerMetadata)
+      val (writer, attributeStore) = getRfLayerWriter(layer.output.uri)
+
+      Pyramid.upLevels(layerRdd, layoutScheme, maxZoom, 1, resampleMethod) { (rdd, zoom) =>
+        // attributes that apply to all layers are placed at zoom 0
+        val sharedId = LayerId(layer.id.toString, 0)
+        val layerId = LayerId(layer.id.toString, zoom)
+        writer.write(layerId, rdd)
+
+        if (zoom == math.max(maxZoom / 2, 1)) {
+          import spray.json.DefaultJsonProtocol._
+          attributeStore.write(sharedId, "histogram", multibandHistogram(rdd, numBuckets = 10))
+        }
+
+        if (zoom == 1) {
+          attributeStore.write(sharedId, "extent", rdd.metadata.extent)
+          attributeStore.write(sharedId, "crs", rdd.metadata.crs)(crsJsonFormat) // avoid using default JF
+        }
+      }
     }
+
     sc.stop
   }
-  // test:runMain com.azavea.rf.ingest.Ingest -j file:/Users/eugene/proj/raster-foundry/app-backend/ingest/sampleJob.json
 }

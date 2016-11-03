@@ -3,6 +3,7 @@ package com.azavea.rf.ingest.s3
 import com.amazonaws.auth._
 import com.amazonaws.services.s3.model.{ListObjectsRequest, ObjectListing}
 import com.amazonaws.services.s3.{AmazonS3Client, AmazonS3URI}
+import geotrellis.spark.io.s3.S3LayerWriter
 import org.apache.commons.io.IOUtils
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
@@ -56,5 +57,10 @@ object S3 {
     } while (listing.isTruncated)
 
     result.toSeq
+  }
+
+  def parse(uri: URI): (String, String) = {
+    val S3UrlRx(_, _, bucket, prefix) = uri.toString
+    (bucket, prefix)
   }
 }

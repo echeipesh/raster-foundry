@@ -12,11 +12,10 @@ import geotrellis.proj4.CRS
 case class SourceDefinition(
   uri: URI,
   extent: Extent,
-  crs: CRS,
   cellSize: CellSize,
   bandMaps: Array[BandMapping]
 )
 
 object SourceDefinition {
-  implicit val jsonFormat = jsonFormat5(SourceDefinition.apply _)
+  implicit val jsonFormat = jsonFormat4(SourceDefinition.apply _)
 }
