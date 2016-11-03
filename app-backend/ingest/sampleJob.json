@@ -1,9 +1,9 @@
 {
     "id": "dda6080f-f7ad-455d-b409-764dd8c57039",
     "layers": [{
-        "id": "8436f7e9-b7f7-4d4f-bda8-76b32c35669b",
+        "id": "8436f7e9-b7f7-4d4f-bda8-76b32c35669d",
         "output": {
-            "uri": "s3://geotrellis-test/8436f7e9-b7f7-4d4f-bda8-76b32c35669b/",
+            "uri": "s3://geotrellis-test/rf-catalog",
             "crs": "epsg:4326",
             "cellType": "int32",
             "cellSize": {"width": 0.008333333330000, "height": -0.008333333330000},
@@ -13,7 +13,6 @@
         "sources": [{
             "uri": "s3://geotrellis-test/nex-geotiff/tasmax_amon_BCSD_rcp26_r1i1p1_CONUS_CCSM4_200601-201012-200601120000_0_0.tif",
             "extent": [-125.0250000,45.6666667,-120.7583333,49.9333333],
-            "crs": "epsg:4326",
             "cellSize": {"width": 0.008333333330000, "height": -0.008333333330000},
             "bandMaps": [{"source": 1, "target": 1}]
         }]
