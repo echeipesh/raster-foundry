@@ -120,13 +120,12 @@ lazy val database = Project("database", file("database"))
      libraryDependencies ++= slickDependencies ++ dbDependencies ++ loggingDependencies ++ Seq(Dependencies.akkaHttpExtensions)
   })
 
-lazy val ingest = project.in(file("ingest"))
+lazy val ingest = Project("ingest", file("ingest"))
   .settings(commonSettings:_*)
+  .settings(resolvers += Resolver.bintrayRepo("azavea", "geotrellis"))
   .settings({
-    libraryDependencies ++= slickDependencies ++ Seq(
-      Dependencies.geotrellisRaster,
-      Dependencies.geotrellisVector,
-      Dependencies.geotrellisSparkEtl,
+    libraryDependencies ++= Seq(
+      Dependencies.geotrellisSpark,
       Dependencies.geotrellisS3,
       Dependencies.geotrellisUtil,
       Dependencies.akkajson,
