@@ -10,6 +10,7 @@ object Dependencies {
   val akkatestkit        = "com.typesafe.akka"     %% "akka-http-testkit"                 % Version.akka
   val akkaSlf4j          = "com.typesafe.akka"     %% "akka-slf4j"                        % Version.akkaSlf4j
   val geotrellisSparkEtl = "com.azavea.geotrellis" %% "geotrellis-spark-etl"              % Version.geotrellis
+  val geotrellisSpark    = "com.azavea.geotrellis" %% "geotrellis-spark"                  % Version.geotrellis
   val geotrellisS3       = "com.azavea.geotrellis" %% "geotrellis-s3"                     % Version.geotrellis
   val geotrellisRaster   = "com.azavea.geotrellis" %% "geotrellis-raster"                 % Version.geotrellis
   val geotrellisSlick    = "com.azavea.geotrellis" %% "geotrellis-slick"                  % Version.geotrellis
