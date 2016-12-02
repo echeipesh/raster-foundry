@@ -15,12 +15,14 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.model.{ContentType, HttpEntity, HttpResponse, MediaTypes}
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import com.typesafe.scalalogging.LazyLogging
-
 import spray.json._
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent._
+import java.util.UUID
 
 trait Routes extends LazyLogging {
+
   def layerTile(layer: RfLayerId) =
     pathPrefix(IntNumber / IntNumber / IntNumber).tmap[Future[MultibandTile]] {
       case (zoom: Int, x: Int, y: Int) =>
@@ -122,13 +124,29 @@ trait Routes extends LazyLogging {
     defaultBreaks: Option[Array[Double]] = None
   ): Route = {
     modelParams(defaultColorRamp, defaultBreaks) { params =>
-        complete {
-          for {
-            tile <- futureTile
-          } yield {
-            val subsetTile = tile.subsetBands(params.bands)
-            val colorMap = ColorMap(params.breaks, params.ramp)
-            pngAsHttpResponse(index(subsetTile).renderPng(colorMap))
+      complete {
+        for {
+          tile <- futureTile
+        } yield {
+          val subsetTile = tile.subsetBands(params.bands)
+          val colorMap = ColorMap(params.breaks, params.ramp)
+          pngAsHttpResponse(index(subsetTile).renderPng(colorMap))
+        }
+      }
+    }
+  }
+
+  def mosaicLayer: Route =
+    pathPrefix(JavaUUID / Segment / "mosaic" / IntNumber / IntNumber / IntNumber) { (orgId, userId, zoom, x, y) =>
+      colorCorrectParams { params =>
+        parameters('scene.*) { scenes =>
+          get {
+            complete {
+              val ids = scenes.map(id => RfLayerId(orgId, userId, UUID.fromString(id)))
+              Mosaic(params, ids, zoom, x, y).map { maybeTile =>
+                maybeTile.map { tile => pngAsHttpResponse(tile.renderPng())}
+              }
+            }
           }
         }
       }
