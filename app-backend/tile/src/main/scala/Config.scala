@@ -20,10 +20,9 @@ trait Config {
     else
       5.minutes
 
-  lazy val cacheSize: Int =
-    if (cacheConfig.hasPath("size")) cacheConfig.getInt("size") else 512
+  lazy val cacheSize: Long =
+    if (cacheConfig.hasPath("size")) cacheConfig.getLong("size") else 512l
 
   lazy val defaultBucket:String =
     tileserverConfig.getString("bucket")
 }
-
