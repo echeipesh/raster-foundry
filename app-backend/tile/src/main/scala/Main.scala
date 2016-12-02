@@ -6,6 +6,8 @@ import akka.http.scaladsl.Http
 import akka.stream.ActorMaterializer
 import akka.http.scaladsl.server._
 import akka.http.scaladsl.server.Directives._
+import akka.http.scaladsl.model.StatusCodes
+import geotrellis.spark.io._
 
 object AkkaSystem {
   implicit val system = ActorSystem("rf-tiler-system")
@@ -19,7 +21,19 @@ object AkkaSystem {
 object Main extends App with Config with AkkaSystem.LoggerExecutor {
   import AkkaSystem._
 
-  def rootRoute = pathPrefix("tiles") { Routes.singleLayer }
+  implicit def exceptionHandler  =
+    ExceptionHandler {
+      case e: TileNotFoundError =>
+        complete(StatusCodes.NotFound)
+      case e: IllegalArgumentException =>
+        complete(StatusCodes.ClientError(400)("Bad Argument", e.getMessage))
+      case e: IllegalStateException =>
+        complete(StatusCodes.ClientError(400)("Bad Request", e.getMessage))
+    }
+
+  def rootRoute = handleExceptions(exceptionHandler) {
+    pathPrefix("tiles") { Routes.singleLayer ~ Routes.mosaicLayer }
+  }
 
   Http().bindAndHandle(rootRoute, httpHost, httpPort)
 }
