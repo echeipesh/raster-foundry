@@ -6,8 +6,9 @@ import geotrellis.spark._
 import geotrellis.raster.io._
 import geotrellis.spark.io._
 import geotrellis.spark.io.s3.{S3AttributeStore, S3ValueReader}
-import scala.concurrent.Future
-
+import scala.concurrent._
+import java.util.concurrent.Executors
+import scala.util._
 import com.github.blemale.scaffeine.{ AsyncLoadingCache, Scaffeine, LoadingCache }
 import scala.concurrent.ExecutionContext.Implicits.global
 import spray.json.DefaultJsonProtocol._
@@ -50,13 +51,16 @@ object LayerCache extends Config {
         new S3ValueReader(attributeStore(defaultBucket, id.prefix)).reader[SpatialKey, MultibandTile](id.catalogId(zoom))
       }
 
+  val blockingExecutionContext =
+    ExecutionContext.fromExecutor(Executors.newFixedThreadPool(64))
+
   val cacheTiles: AsyncLoadingCache[(RfLayerId, Int, SpatialKey), MultibandTile] =
     Scaffeine()
       .recordStats()
       .expireAfterWrite(cacheExpiration)
       .maximumSize(cacheSize)
       .buildAsyncFuture { case (id: RfLayerId, zoom, key: SpatialKey) =>
-        Future { cacheReaders.get((id, zoom)).read(key) }
+        Future(cacheReaders.get((id, zoom)).read(key))(blockingExecutionContext)
       }
 
   def attributeStore(bucket: String, prefix: String): S3AttributeStore =
@@ -65,8 +69,29 @@ object LayerCache extends Config {
   def attributeStore(prefix: String): S3AttributeStore =
     attributeStore(defaultBucket, prefix)
 
+
   def tile(id: RfLayerId, zoom: Int, key: SpatialKey): Future[MultibandTile] =
     cacheTiles.get((id, zoom, key))
+
+
+  val cacheMaybeTile: AsyncLoadingCache[(RfLayerId, Int, SpatialKey), Option[MultibandTile]] =
+    Scaffeine()
+      .recordStats()
+      .expireAfterWrite(cacheExpiration)
+      .maximumSize(cacheSize)
+      .buildAsyncFuture { case (id: RfLayerId, zoom, key: SpatialKey) =>
+        Future {
+          Try(cacheReaders.get((id, zoom)).read(key))  match {
+            // Only cache failures through failed query
+            case Success(tile) => Some(tile)
+            case Failure(e: TileNotFoundError) => None
+            case Failure(e) => throw e
+          }
+        }(blockingExecutionContext)
+    }
+
+  def maybeTile(id: RfLayerId, zoom: Int, key: SpatialKey): Future[Option[MultibandTile]] =
+    cacheMaybeTile.get((id, zoom, key))
 
   def bandHistogram(id: RfLayerId, zoom: Int): Future[Array[Histogram[Double]]] =
     cacheHistogram.get((id, 0))
