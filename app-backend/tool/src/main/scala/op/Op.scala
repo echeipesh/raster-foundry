@@ -19,7 +19,7 @@ trait Op extends TileLike with Grid {
   def rows: Int
   def get(col: Int, row: Int): Int
   def getDouble(col: Int, row: Int): Double
-  
+
   def map(f: Int => Int): Op =
     Op.MapInt(this, f)
 
@@ -60,8 +60,17 @@ trait Op extends TileLike with Grid {
   }
 }
 
+trait TileRef
+sealed case class SingleBandRef(name: Symbol)
+sealed case class IndexBandRef(name: Symbol, band: Int)
+
 object Op {
-  implicit def tileToOp(tile: Tile): Op = BoundOp(tile)
+  implicit def tileToOp(tile: Tile): Op = Bound(tile)
+
+  def apply(name: Symbol): Op = Var(name)
+  def apply(name: Symbol, band: Int): Op = Var(name, Some(band))
+  def apply(identifier: String): Op = Var(identifier)
+  def apply(tile: Tile): Op = Bound(tile)
 
   trait Unary extends Op {
     def src: Op
@@ -80,7 +89,22 @@ object Op {
     //      s"${left.dimensions} does not match ${right.dimensions}")
   }
 
-  case class Unbound(name: Symbol) extends Op {
+  object Var {
+    val VarRx = """([a-zA-Z_\d-]+)(\[(\d+)\])?""".r
+    def apply(identifier: String): Var = {
+      try {
+        val VarRx(name, _, band) = identifier
+        Var(Symbol(name), Option(band).map(_.toInt))
+      } catch {
+        case e: MatchError =>
+          throw new IllegalArgumentException(s"`$identifier` is not a valid identifer")
+      }
+    }
+
+    def apply(name: Symbol, band: Int): Var = Var(name, Some(band))
+  }
+
+  case class Var(name: Symbol, band: Option[Int] = None) extends Op {
     def cols: Int = ???
     def rows: Int = ???
     def get(col: Int, row: Int): Int = ???

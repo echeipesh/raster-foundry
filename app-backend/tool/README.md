@@ -8,42 +8,59 @@ their use solidifies.
 ## JSON Format
 
 First we need to be able to specify the how to  construct arbitraty ops from JSON.
-A JSON node represents a construction of an `Op`. 
-Until we have some way to parse numeric operations on primitives like `band1 + band2` we have to assume that we have
-access to a library of standard map algebra functions like: `+`, `-`, `/`, etc.
+A JSON node represents a construction of an `Op`.
+Until we have some way to parse numeric operations on primitives like `band1 + band2` we have to assume that we have access to a library of standard map algebra functions like: `+`, `-`, `/`, etc.
+The rest of the tile operstions will be expressed as combinations of these primitives.
 
-Each JSON object of type "op" is a _definition_ of function application. 
-Function definition has:
+There are two forms which are allowed:
 
-- name
-- parameters - declaration of what the function will need
-- composition/body - calling other functions
-- arguments - passing own parameters to other functions
+### Function Application
 
+``` scala
+{ "apply": "-", "args": ["red", "nir"] }
+```
+
+ - `apply`: name of the function being applied
+ - `args`: Array of JSON object of function arguments
+  - if list: positional arguments
+  - if json: by name arguments
+  - String arguments refer to layer variables
+  - other arguments will be parsed individually by the function and can be something like bbox
+
+### Function Definition
+
+```json
+{
+    "definition": "ndvi",
+    "params": ["red", "nir"],
+    "result": {
+        "apply": "/",
+        "args": [
+            { "apply": "-", "args": ["red", "nir"] },
+            { "apply": "+", "args": ["red", "nir"] }
+        ]
+    }
+}
+```
+
+ - `definition`: name of the function being defined for later re-use
+ - `params`: delcariation list of variables that will be function parameters
+ - `include`: JSON array of function definitions to be used in `result`
+ - `result`: function application that will be the result of application
+
+It is anticipated that root element of an OP POST will have to be a function definition.
 
 ### Examples
-Looking for cleanly recursive structure.
 
 
 #### Binary
 
-```json
-{
-    "definition": "ndvi",
-    "params": ["red", "nir"],
-    "apply": "/",
-    "args": [
-        { "apply": "-", "args": ["red", "nir"] },
-        { "apply": "+", "args": ["red", "nir"] }
-    ]
-}
-```
 
 ```json
 {
     "definition": "ndvi",
     "params": ["red", "nir"],
-    "result": {   
+    "result": {
         "apply" :"/",
         "args": [
             { "apply": "-", "args": ["red", "nir"] },
@@ -53,40 +70,14 @@ Looking for cleanly recursive structure.
 }
 ```
 
-
-```json
-{
-    "definition": "ndvi2",
-    "params": ["notread", "notnir"],
-    "apply": "ndvi",
-    "args": {"red": "notnir", "nir": "notred"}
-}
-
-{
-    "apply" :"/",
-    "args": [
-        { "apply": "-", "args": ["notnir", "notred"] },
-        { "apply": "+", "args": ["notnir", "notred"] }
-    ]
-}
-```
-
- - `definition` is optiona, can be used to refer to this operations in the rest of the file in `fn` field
- - `in` array are reduced from left to right if `fn` is binary. If `fn` is unary the in must not be an array
-
 #### Unary
 
 ```json
 {
     "apply": "mask",
-    "args": ["layer", [23, 44, 56, 65]]
+    "args": ["red", [23, 44, 56, 65]]
 }
 ```
- - A string in the `in` list refers to a definitiond argument to the funciton.
- - Other type of paramters are parsed based on `fn` value.
- - # this seems hoky .. what if the order if flipped?
- - TODO: How does this look as an actual tile Op?
-
 
 #### Multiband Output
 
@@ -95,13 +86,13 @@ Looking for cleanly recursive structure.
     "definition": "ndvi",
     "params": ["red", "nir"],
     "result": [
-        { 
+        {
         "apply": "/",
         "args": [
             { "apply": "-", "args": ["red", "nir"] },
             { "apply": "+", "args": ["red", "nir"] }]
         },
-        { 
+        {
         "apply": "/",
         "args": [
             { "apply": "+", "args": ["red", "nir"] },
@@ -119,7 +110,7 @@ things to figure out:
 
 - How do inputs tie with outputs when you re-use functions ?
 - Do names matter? How doe named and position arguments co-exit
-  
+
 ## Multiband Input
 
 We are expecting the input tile to be a multiband tile, this implis that band index has some kind of predefined meaning.
@@ -130,7 +121,7 @@ We can introduce index notation for that parameters:
 {
     "definition": "multiband_ndvi",
     "params": ["LC8"],
-    "result": { 
+    "result": {
         "apply": "/",
         "args": [
             { "apply": "-", "args": ["LC8[4]", "LC8[5]"] },
@@ -146,7 +137,7 @@ We can introduce a function that wraps the variable assignment:
 {
     "definition": "LC8_ndvi",
     "params": ["LC8"],
-    "result": { 
+    "result": {
         "apply": "ndvi",
         "args": ["LC8[4]", "LC8[5]"]
     }
@@ -182,7 +173,7 @@ libraries by their URI as well as full definition in this example:
             ]
         }
     ],
-    "result": { 
+    "result": {
         "apply": "ndvi",
         "args": ["LC8[4]", "LC8[5]"]
     }

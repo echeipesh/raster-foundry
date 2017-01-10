@@ -1,14 +1,13 @@
 package com.azavea.rf.tool
 
 import spray.json._
+import geotrellis.raster.op._
 
 object Defines {
-  /** Functions available in curren `include` scope */
+  // Functions available in curren `include` scope
   type Scope = Map[Symbol, Op]
-
   type FunctionFormat = JsValue => Op
 }
-
 
 class FunctionParser(scope: Map[Symbol, Op]) {
   // TODO: make Division
@@ -17,28 +16,26 @@ class FunctionParser(scope: Map[Symbol, Op]) {
   def division(args: JsValue) = args match {
     case obj: JsObject => sys.error("not supported?")
     case arr: JsArray =>
-      arr.map(name => Op.Unbound(Symbol(name)))
-        .reduce(_ / _)
-
       // TODO: is `name` actually a valid symbol ?
       // TODO: does arr have at least two members ?
       // Should this constructo be lefted to Op ?
+      ???
+    case _ =>
+      throw new DeserializationException("bad arg format")
   }
 }
 
-object Parse {
-  
-  type MLTool = MultibandTile => MultibandTile
+object OpParser {
 
   implicit object ApplyFormat extends RootJsonFormat[Op] {
     def read(json: JsValue): Op = {
-      json.asObject.getFields("apply", "args") match {
+      json.asJsObject.getFields("apply", "args") match {
         case Seq(function, args) =>
           // dispatch to function parser, give it the args
 
           // args can be either list of named
           // if list map JsValue => Op
-
+          ???
       }
     }
 
@@ -47,10 +44,7 @@ object Parse {
     }
   }
 
-  def entryPoint(blob: String): MLTool = {
-    
-    
-  }
+  def parse(blog: String): Op = ???
 
   // in the end I will need MultibandTile => MultibandTile ... via Op
   // but Op is already bound to something ...

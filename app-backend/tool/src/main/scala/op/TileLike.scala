@@ -1,5 +1,6 @@
 package geotrellis.raster.op
 
+import geotrellis.macros._
 import spire.syntax.cfor._
 
 /**
