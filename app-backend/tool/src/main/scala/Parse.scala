@@ -2,6 +2,7 @@ package com.azavea.rf.tool
 
 import spray.json._
 import geotrellis.raster.op._
+import shapeless._
 
 object Defines {
   // Functions available in curren `include` scope
@@ -9,7 +10,7 @@ object Defines {
   type FunctionFormat = JsValue => Op
 }
 
-class FunctionParser(scope: Map[Symbol, Op]) {
+class OpParser(scope: Map[Symbol, Op]) {
   // TODO: make Division
   // TODO: make Mask
 
@@ -25,8 +26,60 @@ class FunctionParser(scope: Map[Symbol, Op]) {
   }
 }
 
+object OpRegistry {
+  // parsing dispatch based on op name from the "apply" field
+  def apply(name: String): Option[RootJsonReader[Op]] = ???
+}
+
+/** This class defines how to turn a list of objects into an Op of specific kind */
+abstract class PositionalArgs(val posFormats: JsonReader[_]*) {
+  // we have to cast everything until we have HLists
+  def fromPositional(args: Array[_]): Op
+}
+
+/** Defines how to turn a map of valuees into an Op of a specific kind */
+abstract class NamedArgs(val namedFormats: Map[String, JsonReader[_]]) {
+
+}
+
+class DivParser extends RootJsonReader[Op] {
+
+  def read(json: JsValue): Op = {
+    json match {
+      case obj: JsObject =>
+        ??? // named argument list
+        // get HMap of JsReader for shit, use it to parse, delicate
+      case arr: JsArray =>
+        ??? // positional argument list
+        // get HList of JsReader for shit, use it to parse, deligate
+      case _ =>
+        throw new DeserializationException(s"Expected argument list, found: $json")
+    }
+  }
+}
+
+class OpReader extends RootJsonReader[Op] {
+  def read(json: JsValue): Op = {
+    json match {
+      // layer identifier
+      case JsString(identifier) =>
+        Op.Var(identifier)
+
+      // op application try to look it up in the registry
+      case obj: JsObject if obj.fields.contains("apply") && obj.fields.contains("args") =>
+        val opName = obj.fields("apply").asInstanceOf[JsString].value
+        // TODO: handle lookup failure better better
+        // TODO: without scope this can not parse references to ops defined in "include" section
+        OpRegistry(opName).get.read(obj.fields("args"))
+      case _ =>
+        throw new DeserializationException(s"Expected either layer identifier of op apply, found: $json")
+    }
+  }
+}
+
 object OpParser {
 
+  type SingleOpParser = JsValue => Op
   implicit object ApplyFormat extends RootJsonFormat[Op] {
     def read(json: JsValue): Op = {
       json.asJsObject.getFields("apply", "args") match {
@@ -45,10 +98,4 @@ object OpParser {
   }
 
   def parse(blog: String): Op = ???
-
-  // in the end I will need MultibandTile => MultibandTile ... via Op
-  // but Op is already bound to something ...
-
-  // 1. How do I solve the binding issue
-  // 2. How do I work with MultibandTile
 }

@@ -33,4 +33,6 @@ object Dependencies {
   val scaffeine          = "com.github.blemale"          %% "scaffeine"                         % Version.scaffeine
   val commonsIO          = "commons-io"                   % "commons-io"                        % Version.commonsIO
   val scopt              = "com.github.scopt"            %% "scopt"                             % Version.scopt
+  val shapeless          = "com.chuusai"                 %% "shapeless"                         % Version.shapeless
+
 }

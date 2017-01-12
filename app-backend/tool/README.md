@@ -174,8 +174,17 @@ libraries by their URI as well as full definition in this example:
         }
     ],
     "result": {
-        "apply": "ndvi",
-        "args": ["LC8[4]", "LC8[5]"]
+        "apply", "+",
+        "args": [
+            {
+                "apply": "ndvi",
+                "args": ["LC8[4]", "LC8[5]"]
+            },
+            {
+                "apply": "ndvi",
+                "args": ["LC8[5]", "LC8[6]"]
+            }
+        ]
     }
 }
 ```

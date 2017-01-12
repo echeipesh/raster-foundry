@@ -4,7 +4,7 @@ import geotrellis.raster._
 import spire.syntax.cfor._
 
 trait Op extends TileLike with Grid {
-  // Theseare done as MethodExtensions for Tile
+  // TODO: Move these out into a TypeClass
   def +(x: Int) = this.map((_: Int) + x)
   def +(x: Double) = this.mapDouble(_ + x)
   def +(other: Op) = this.dualCombine(other)(_ + _)(_ + _)
@@ -41,6 +41,10 @@ trait Op extends TileLike with Grid {
   def mapDoubleMapper(mapper: DoubleTileMapper) =
     Op.DoubleMapper(this, mapper)
 
+  def vars: OpVars = new OpVars(this, Map.empty)
+
+  def bind(args: Map[Op.Var, Op]): Op
+
   def toTile(ct: CellType): Tile = {
     val output = ArrayTile.empty(ct, cols, rows)
     if (ct.isFloatingPoint) {
@@ -59,10 +63,6 @@ trait Op extends TileLike with Grid {
     output
   }
 }
-
-trait TileRef
-sealed case class SingleBandRef(name: Symbol)
-sealed case class IndexBandRef(name: Symbol, band: Int)
 
 object Op {
   implicit def tileToOp(tile: Tile): Op = Bound(tile)
@@ -109,6 +109,13 @@ object Op {
     def rows: Int = ???
     def get(col: Int, row: Int): Int = ???
     def getDouble(col: Int, row: Int): Double = ???
+    def bind(args: Map[Var, Op]): Op = {
+      args.get(this) match {
+        case Some(replacement) =>
+          replacement
+        case _ => this
+      }
+    }
   }
 
   case class Bound(tile: Tile) extends Op {
@@ -116,40 +123,55 @@ object Op {
     def rows: Int = tile.rows
     def get(col: Int, row: Int): Int = tile.get(col, row)
     def getDouble(col: Int, row: Int): Double = tile.getDouble(col, row)
+    def bind(args: Map[Var, Op]): Op = this
   }
 
   case class MapInt(src: Op, f: Int => Int) extends Unary {
     def get(col: Int, row: Int) = f(src.get(col, row))
     def getDouble(col: Int, row: Int) = i2d(f(src.get(col, row)))
+    def bind(args: Map[Var, Op]): Op =
+      MapInt(src.bind(args), f)
   }
 
   case class MapDouble(src: Op, f: Double => Double) extends Unary {
     def get(col: Int, row: Int) = d2i(f(src.getDouble(col, row)))
     def getDouble(col: Int, row: Int) = f(src.getDouble(col, row))
+    def bind(args: Map[Var, Op]): Op =
+      MapDouble(src.bind(args), f)
   }
 
   case class IntMapper(src: Op, mapper: IntTileMapper) extends Unary {
     def get(col: Int, row: Int) = mapper(col, row, src.get(col, row))
     def getDouble(col: Int, row: Int) = i2d(mapper(col, row, src.get(col, row)))
+    def bind(args: Map[Var, Op]): Op =
+      IntMapper(src.bind(args), mapper)
   }
 
   case class DoubleMapper(src: Op, mapper: DoubleTileMapper) extends Unary {
     def get(col: Int, row: Int) = d2i(mapper(col, row, src.getDouble(col, row)))
     def getDouble(col: Int, row: Int) = mapper(col, row, src.getDouble(col, row))
+    def bind(args: Map[Var, Op]): Op =
+      DoubleMapper(src.bind(args), mapper)
   }
 
   case class CombineInt(left: Op, right: Op, f: (Int, Int) => Int) extends Binary {
     def get(col: Int, row: Int) = f(left.get(col, row), right.get(col, row))
     def getDouble(col: Int, row: Int) = i2d(f(left.get(col, row), right.get(col, row)))
+    def bind(args: Map[Var, Op]): Op =
+      CombineInt(left.bind(args), right.bind(args), f)
   }
 
   case class CombineDouble(left: Op, right: Op, f: (Double, Double) => Double) extends Binary {
     def get(col: Int, row: Int) = d2i(f(left.getDouble(col, row), right.getDouble(col, row)))
     def getDouble(col: Int, row: Int) = f(left.getDouble(col, row), right.getDouble(col, row))
+    def bind(args: Map[Var, Op]): Op =
+      CombineDouble(left.bind(args), right.bind(args), f)
   }
 
   case class DualCombine(left: Op, right: Op, f: (Int, Int) => Int, g: (Double, Double) => Double) extends Binary {
     def get(col: Int, row: Int) = f(left.get(col, row), right.get(col, row))
     def getDouble(col: Int, row: Int) = g(left.getDouble(col, row), right.getDouble(col, row))
+    def bind(args: Map[Var, Op]): Op =
+      DualCombine(left.bind(args), right.bind(args), f, g)
   }
 }

@@ -16,8 +16,7 @@ class ParseSpec extends FunSpec with Matchers {
     val nirTile: Tile = ???
     val redTile: Tile = ???
 
-    //val resTile = tool.eval('nir -> nirTile, 'red -> redTile)
-    //resTile should be equal(redTile + nirTile)
+    OpParser.parse(json)
   }
 
   it("it works on multiband tile") {

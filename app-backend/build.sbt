@@ -155,7 +155,8 @@ lazy val tool = Project("tool", file("tool"))
   .settings(resolvers += Resolver.bintrayRepo("azavea", "geotrellis"))
   .settings({
     libraryDependencies ++= loggingDependencies ++ Seq(
-      Dependencies.geotrellisRaster
+      Dependencies.geotrellisRaster,
+      Dependencies.shapeless,
+      Dependencies.scalatest
     )
   })
-

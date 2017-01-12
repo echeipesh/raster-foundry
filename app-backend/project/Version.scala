@@ -22,4 +22,5 @@ object Version {
   val scaffeine          = "1.3.0"
   val commonsIO          = "2.5"
   val scopt              = "3.5.0"
+  val shapeless          = "2.2.5"
 }
