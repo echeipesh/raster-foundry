@@ -29,4 +29,5 @@ object Version {
   val shapeless          = "2.2.5"
   val findbugAnnotations = "3.0.1u2"
   val chill              = "0.9.2"
+  val cats               = "0.9.0"
 }

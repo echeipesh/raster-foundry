@@ -40,4 +40,5 @@ object Dependencies {
   val shapeless               = "com.chuusai"                 %% "shapeless"                         % Version.shapeless
   val findbugAnnotations      = "com.google.code.findbugs"     % "annotations"                       % Version.findbugAnnotations % "compile"
   val chill                   = "com.twitter"                 %% "chill"                             % Version.chill
+  val cats                    = "org.typelevel"               %% "cats"                              % Version.cats
 }
